@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Interaktywny Symulator RAG</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f3f4f6;
+      font-family: sans-serif;
+    }
+    header h1 {
+      font-size: 2.5em;
+      font-weight: bold;
+      margin-bottom: 10px;
+      background: linear-gradient(to right, #2563eb, #4f46e5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    /* Form inputs and text areas for improved readability */
+    input[type="text"], textarea {
+      font-size: 1.1em;
+    }
+    /* New classes for clear differentiation */
+    .doc-title {
+      font-size: 1.25em;
+      font-weight: bold;
+      color: #2c3e50;
+      border-bottom: 2px solid #e74c3c;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+      display: inline-block;
+    }
+    .doc-content {
+      font-size: 1em;
+      color: #34495e;
+      background-color: #ecf0f1;
+      padding: 8px;
+      border-radius: 4px;
+      margin: 5px 0;
+    }
+    .vector-code {
+      font-family: Consolas, monospace;
+      background-color: #f4f4f4;
+      border: 1px solid #ccc;
+      padding: 4px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .doc-score {
+      font-size: 0.9em;
+      color: #fff;
+      background-color: #27ae60;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+    }
+    .generated-text {
+      font-size: 1.1em;
+      color: #2c3e50;
+      background-color: #dff9fb;
+      padding: 10px;
+      border-left: 4px solid #2980b9;
+      margin-top: 8px;
+    }
+    /* Simulation steps styling */
+    .simulation-step {
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 15px;
+      background: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .simulation-step h3 {
+      font-size: 1.3em;
+      color: #1abc9c;
+      margin-bottom: 10px;
+    }
+    .simulation-step .step-content {
+      font-size: 0.95em;
+      background: #f9fafb;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #e5e7eb;
+      white-space: pre-wrap;
+      min-height: 50px;
+    }
+    .simulation-step .step-explanation {
+      font-size: 0.85em;
+      color: #7f8c8d;
+      text-align: center;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container my-4" id="app">
+    <header class="text-center mb-4">
+      <h1>Interaktywny Symulator RAG</h1>
+      <p>Wprowadź zapytanie lub dodaj własny dokument, aby zobaczyć symulację procesu RAG.</p>
+    </header>
+    <!-- Add Document Form -->
+    <section id="add-document-form" class="mb-4 p-4 border rounded bg-light">
+      <h2 class="h4 mb-3">Dodaj Własny Dokument do Bazy Wiedzy</h2>
+      <div class="mb-3">
+        <label for="new-doc-title" class="form-label">Tytuł Dokumentu (opcjonalnie):</label>
+        <input type="text" id="new-doc-title" class="form-control" placeholder="Np. Moje Notatki">
+      </div>
+      <div class="mb-3">
+        <label for="new-doc-content" class="form-label">Treść Dokumentu:</label>
+        <textarea id="new-doc-content" rows="3" class="form-control" placeholder="Wklej lub wpisz treść swojego dokumentu tutaj..."></textarea>
+      </div>
+      <div class="text-center">
+        <button id="add-doc-button" class="btn btn-primary">Dodaj i Zwektoryzuj</button>
+      </div>
+      <div id="feedback-message" class="mt-2 text-center"></div>
+    </section>
+    <!-- Vector Database -->
+    <section id="vector-database" class="mb-4">
+      <h2 class="h4 text-center mb-3">Wektorowa Baza Wiedzy (Indeksowana)</h2>
+      <div id="vector-database-grid" class="row"></div>
+    </section>
+    <!-- Query Input -->
+    <section id="query-section" class="mb-4">
+      <div class="mb-3">
+        <label for="user-query" class="form-label">Twoje Zapytanie:</label>
+        <input type="text" id="user-query" class="form-control" placeholder="Np. Jakie są godziny otwarcia biura?">
+      </div>
+      <div class="text-center">
+        <button id="run-simulation-button" class="btn btn-primary">Uruchom RAG</button>
+      </div>
+    </section>
+    <!-- Threshold Selector -->
+    <section id="threshold-selector" class="mb-4 text-center">
+      <label for="min-score-slider" class="form-label">Minimalny Wynik Podobieństwa:</label>
+      <input type="range" id="min-score-slider" min="0" max="1" step="0.05" value="0.15" class="form-range w-50 mx-auto">
+      <div id="threshold-value" class="fw-bold mt-2">0.15</div>
+    </section>
+    <!-- Simulation Process -->
+    <section id="simulation-process" class="mb-4">
+      <h2 class="h4 text-center mb-3">Przebieg Procesu RAG</h2>
+      <div id="simulation-steps"></div>
+    </section>
+    <div id="error-display" class="text-center text-danger fw-bold mb-3"></div>
+    <div id="reset-button-container" class="text-center mb-3"></div>
+  </div>
+  
+  <script>
+    /********** STATE & INITIAL DATA **********/
+    const initialKnowledgeBaseDocs = [
+      { id: "doc1", title: "Regulamin Biura", content: "Godziny otwarcia biura to 9:00 - 17:00 od poniedziałku do piątku. W weekendy biuro jest nieczynne.", keywords: ["godziny", "otwarcia", "biuro", "czynne", "weekend"] },
+      { id: "doc2", title: "Polityka Pracy Zdalnej", content: "Pracownicy mogą pracować zdalnie przez 2 dni w tygodniu po uzgodnieniu z przełożonym. Wymagane jest stabilne połączenie internetowe.", keywords: ["praca", "zdalna", "zdalnie", "home office", "internet"] },
+      { id: "doc3", title: "Procedura Urlopowa", content: "Wniosek urlopowy należy złożyć co najmniej 2 tygodnie przed planowanym terminem przez system HR. Maksymalny jednorazowy urlop to 14 dni.", keywords: ["urlop", "wniosek", "termin", "system hr", "wolne"] },
+      { id: "doc4", title: "Kontakt IT", content: "W razie problemów technicznych prosimy o kontakt z działem IT pod adresem it-support@example.com lub telefonicznie 123-456-789.", keywords: ["it", "pomoc", "techniczne", "kontakt", "support", "telefon", "email"] },
+      { id: "doc5", title: "Benefity Pracownicze", content: "Firma oferuje kartę Multisport, prywatną opiekę medyczną oraz dofinansowanie do okularów. Szczegóły w intranecie.", keywords: ["benefity", "multisport", "opieka medyczna", "okulary", "dofinansowanie"] }
+    ];
+    
+    let knowledgeBaseDocs = [...initialKnowledgeBaseDocs];
+    let documentEmbeddings = {};
+    let userDocCounter = 0;
+    let minScoreThreshold = 0.15;
+    let isSimulationRunning = false;
+    let simulationResults = {
+      queryDisplay: '',
+      queryEmbedding: '',
+      vectorSearchResults: null,
+      retrievedDocs: [],
+      augmentedPrompt: '',
+      finalAnswer: ''
+    };
+    
+    /********** HELPER FUNCTIONS **********/
+    function seededRandom(seed) {
+      let state = seed % 2147483647;
+      if (state <= 0) state += 2147483646;
+      return function() {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+      };
+    }
+    
+    function simulateRealisticEmbedding(text) {
+      if (!text || text.length === 0) return "[0.00, 0.00, ...]";
+      let hash = 0;
+      for (let i = 0; i < text.length; i++) {
+        hash = text.charCodeAt(i) + ((hash << 5) - hash);
+        hash |= 0;
+      }
+      const random = seededRandom(Math.abs(hash));
+      const N_DIMS_DISPLAY = 3;
+      const vec = [];
+      for (let i = 0; i < N_DIMS_DISPLAY; i++) {
+        vec.push((random() * 2 - 1).toFixed(2));
+      }
+      return "[" + vec.join(", ") + ", ...]";
+    }
+    
+    function showFeedback(message, isSuccess = true) {
+      const feedbackDiv = document.getElementById('feedback-message');
+      feedbackDiv.textContent = message;
+      feedbackDiv.className = isSuccess ? 'alert alert-success' : 'alert alert-danger';
+      setTimeout(() => {
+        feedbackDiv.textContent = "";
+        feedbackDiv.className = "";
+      }, 3500);
+    }
+    
+    function refreshVectorDatabaseView() {
+      documentEmbeddings = {};
+      knowledgeBaseDocs.forEach(doc => {
+        documentEmbeddings[doc.id] = simulateRealisticEmbedding(doc.content);
+      });
+      renderVectorDatabase();
+    }
+    
+    function renderVectorDatabase() {
+      const grid = document.getElementById('vector-database-grid');
+      grid.innerHTML = "";
+      knowledgeBaseDocs.forEach(doc => {
+        const colDiv = document.createElement('div');
+        colDiv.className = 'col-md-4 mb-3';
+        const card = document.createElement('div');
+        card.className = 'card h-100';
+        if (simulationResults.retrievedDocs.find(d => d.id === doc.id)) {
+          card.classList.add('border-success');
+        }
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        // Use the new class for the document title
+        const title = document.createElement('h5');
+        title.className = 'doc-title';
+        const userAdded = doc.id.startsWith('user_doc_') ? ' (użytkownika)' : '';
+        title.textContent = doc.title + userAdded;
+        // Display the vector using the new vector-code class
+        const code = document.createElement('p');
+        code.className = 'vector-code';
+        code.textContent = documentEmbeddings[doc.id] || '[...]';
+        cardBody.appendChild(title);
+        cardBody.appendChild(code);
+        card.appendChild(cardBody);
+        colDiv.appendChild(card);
+        grid.appendChild(colDiv);
+      });
+    }
+    
+    function addNewDocument() {
+      const titleInput = document.getElementById('new-doc-title');
+      const contentInput = document.getElementById('new-doc-content');
+      let title = titleInput.value.trim() || `Dokument Użytkownika ${userDocCounter + 1}`;
+      let content = contentInput.value.trim();
+      if (!content) {
+        showFeedback("Treść dokumentu nie może być pusta.", false);
+        return;
+      }
+      userDocCounter++;
+      const newDoc = {
+        id: `user_doc_${userDocCounter}`,
+        title: title,
+        content: content,
+        keywords: []
+      };
+      knowledgeBaseDocs.push(newDoc);
+      titleInput.value = "";
+      contentInput.value = "";
+      showFeedback(`Dokument "${title}" został dodany i zwektoryzowany!`, true);
+      refreshVectorDatabaseView();
+    }
+    
+    function simulateVectorSearch(query) {
+      const queryWords = query.toLowerCase().match(/\b(\w+)\b/g)?.filter(word => word.length > 2) || [];
+      const queryEmbedding = simulateRealisticEmbedding(query);
+      if (queryWords.length === 0 && !query) return [];
+      const results = knowledgeBaseDocs.map(doc => {
+        let keywordScore = 0;
+        const contentLower = doc.content.toLowerCase();
+        let searchTerms = new Set(doc.keywords && doc.keywords.length > 0 ? doc.keywords : (contentLower.match(/\b(\w+)\b/g) || []));
+        queryWords.forEach(qWord => {
+          if (searchTerms.has(qWord)) {
+            keywordScore += 1.0;
+          } else if (contentLower.includes(qWord)) {
+            keywordScore += 0.5;
+          }
+          searchTerms.forEach(term => {
+            if (term.includes(qWord) || qWord.includes(term)) {
+              keywordScore += 0.3;
+            }
+          });
+        });
+        let embeddingSimilarity = 0.2;
+        const docEmbedding = documentEmbeddings[doc.id];
+        if (docEmbedding && queryEmbedding.substring(1, 6) === docEmbedding.substring(1, 6)) {
+          embeddingSimilarity = 0.7;
+        } else if (docEmbedding && queryEmbedding.substring(1, 3) === docEmbedding.substring(1, 3)) {
+          embeddingSimilarity = 0.4;
+        }
+        const maxPossibleKeywordScore = Math.max(queryWords.length, 1);
+        const normalizedKeywordScore = (keywordScore / maxPossibleKeywordScore) * 0.6;
+        let finalScore = normalizedKeywordScore + embeddingSimilarity * 0.4;
+        finalScore = Math.min(finalScore, 1.0);
+        if (keywordScore > 0 && finalScore < 0.1) {
+          finalScore = 0.1;
+        }
+        return { ...doc, score: isNaN(finalScore) ? 0 : finalScore };
+      });
+      results.sort((a, b) => (b.score || 0) - (a.score || 0));
+      return results.filter(doc => (doc.score || 0) > 0.01);
+    }
+    
+    function simulateLLM(retrievedDocsForContext, query) {
+      if (!retrievedDocsForContext || retrievedDocsForContext.length === 0) {
+        return `Przepraszam, nie znalazłem żadnych dokumentów spełniających ustawiony próg podobieństwa (${minScoreThreshold}) dla zapytania "${query}". Nie mogę wygenerować odpowiedzi. Spróbuj obniżyć próg lub przeformułować zapytanie.`;
+      }
+      const topDoc = retrievedDocsForContext[0];
+      if (!topDoc) {
+        return "Wystąpił wewnętrzny błąd podczas przetwarzania znalezionych dokumentów.";
+      }
+      const context = retrievedDocsForContext.map(doc => doc.content).join("\n\n");
+      if (context.toLowerCase().includes("godziny otwarcia")) {
+        return `Zgodnie z dokumentem "${topDoc.title}" (Score: ${(topDoc.score * 100).toFixed(0)}%), biuro jest otwarte od 9:00 do 17:00 w dni robocze (poniedziałek-piątek).`;
+      } else if (context.toLowerCase().includes("pracować zdalnie")) {
+        return `Tak, jak opisano w dokumencie "${topDoc.title}" (Score: ${(topDoc.score * 100).toFixed(0)}%), możliwa jest praca zdalna przez 2 dni w tygodniu po wcześniejszym uzgodnieniu z przełożonym.`;
+      } else if (context.toLowerCase().includes("wniosek urlopowy")) {
+        return `Według dokumentu "${topDoc.title}" (Score: ${(topDoc.score * 100).toFixed(0)}%), wniosek o urlop składasz przez system HR, pamiętaj, aby zrobić to minimum 2 tygodnie przed planowanym urlopem.`;
+      } else if (context.toLowerCase().includes("kontakt z działem it")) {
+        return `Informacje o kontakcie z IT znaleziono w dokumencie "${topDoc.title}" (Score: ${(topDoc.score * 100).toFixed(0)}%). Możesz skontaktować się mailowo: it-support@example.com lub telefonicznie: 123-456-789.`;
+      } else if (context.toLowerCase().includes("multisport") || context.toLowerCase().includes("opiekę medyczną")) {
+        return `Dokument "${topDoc.title}" (Score: ${(topDoc.score * 100).toFixed(0)}%) wspomina o benefitach. Firma oferuje m.in. kartę Multisport i prywatną opiekę medyczną. Więcej szczegółów znajdziesz w firmowym intranecie.`;
+      }
+      const otherDocsCount = retrievedDocsForContext.length - 1;
+      const otherDocsText = otherDocsCount > 0 ? `oraz ${otherDocsCount} innych dokumentów spełniających próg` : 'innych informacji spełniających próg';
+      return `Na podstawie dokumentu "${topDoc.title}" (Score: ${(topDoc.score * 100).toFixed(0)}%) ${otherDocsText} znalazłem: ${topDoc.content.substring(0, 100)}...`;
+    }
+    
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
+    function resetSimulation() {
+      simulationResults = {
+        queryDisplay: '',
+        queryEmbedding: '',
+        vectorSearchResults: null,
+        retrievedDocs: [],
+        augmentedPrompt: '',
+        finalAnswer: ''
+      };
+      isSimulationRunning = false;
+      document.getElementById('error-display').textContent = "";
+      document.getElementById('reset-button-container').innerHTML = "";
+      renderSimulationSteps();
+      renderVectorDatabase();
+    }
+    
+    /********** SIMULATION PROCESS **********/
+    async function runSimulation() {
+      const queryInput = document.getElementById('user-query');
+      const query = queryInput.value.trim();
+      if (!query) {
+        document.getElementById('error-display').textContent = "Proszę wprowadzić zapytanie.";
+        return;
+      }
+      document.getElementById('error-display').textContent = "";
+      resetSimulation();
+      isSimulationRunning = true;
+      updateResetButton();
+      
+      // Step 1: Zapytanie
+      simulationResults.queryDisplay = query;
+      renderSimulationSteps();
+      await delay(800);
+      
+      // Step 2: Embedding Zapytania
+      simulationResults.queryEmbedding = simulateRealisticEmbedding(query);
+      renderSimulationSteps();
+      await delay(1000);
+      
+      // Step 3: Wyszukiwanie Wektorowe
+      const searchResults = simulateVectorSearch(query);
+      const docsMeetingThreshold = searchResults.filter(doc => (doc.score || 0) >= minScoreThreshold);
+      const finalContextDocs = docsMeetingThreshold.slice(0, 2);
+      const resultsToShow = searchResults.slice(0, 5);
+      simulationResults.vectorSearchResults = {
+        allResults: searchResults,
+        resultsToShow: resultsToShow,
+        docsMeetingThreshold: docsMeetingThreshold,
+        finalContextDocs: finalContextDocs
+      };
+      renderSimulationSteps();
+      await delay(2500);
+      
+      // Step 4: Odzyskane Dokumenty
+      simulationResults.retrievedDocs = finalContextDocs;
+      renderSimulationSteps();
+      renderVectorDatabase();
+      await delay(1000);
+      
+      // Step 5: Rozszerzony Prompt
+      const context = finalContextDocs.map(doc => doc.content).join("\n\n");
+      const displayContext = context.length > 150 ? context.substring(0, 150) + '...' : context;
+      simulationResults.augmentedPrompt = `Kontekst:\n${displayContext || '(brak - żaden dokument nie spełnił progu)'}\n\nPytanie: ${query}`;
+      renderSimulationSteps();
+      await delay(1500);
+      
+      // Step 6: Odpowiedź
+      simulationResults.finalAnswer = simulateLLM(finalContextDocs, query);
+      renderSimulationSteps();
+      await delay(500);
+      isSimulationRunning = false;
+      updateResetButton();
+    }
+    
+    function updateResetButton() {
+      const container = document.getElementById('reset-button-container');
+      if (isSimulationRunning) {
+        container.innerHTML = `<button id="reset-button" class="btn btn-secondary">Resetuj Symulację</button>`;
+        document.getElementById('reset-button').addEventListener('click', resetSimulation);
+      } else {
+        container.innerHTML = "";
+      }
+    }
+    
+    function renderSimulationSteps() {
+      const container = document.getElementById('simulation-steps');
+      container.innerHTML = "";
+      const steps = [
+        {
+          title: "1. Zapytanie",
+          explanation: "Oryginalne pytanie użytkownika.",
+          content: simulationResults.queryDisplay || ""
+        },
+        {
+          title: "2. Embedding Zapytania",
+          explanation: "Zapytanie przekształcone na wektor.",
+          content: simulationResults.queryEmbedding ? `<span class="vector-code">${simulationResults.queryEmbedding}</span>` : ""
+        },
+        {
+          title: "3. Wyszukiwanie Wektorowe",
+          explanation: "Porównanie wektorów i wyniki podobieństwa.",
+          content: simulationResults.vectorSearchResults && simulationResults.vectorSearchResults.resultsToShow ?
+            simulationResults.vectorSearchResults.resultsToShow.map(doc =>
+              `<div class="mb-2">
+                <span class="doc-title">${doc.title}</span>: <span class="vector-code">${documentEmbeddings[doc.id]}</span>
+                <span class="doc-score">Score: ${(doc.score * 100).toFixed(0)}%</span>
+              </div>`
+            ).join("") : ""
+        },
+        {
+          title: "4. Odzyskane Dokumenty (Kontekst)",
+          explanation: "Dokumenty spełniające próg podobieństwa.",
+          content: simulationResults.retrievedDocs && simulationResults.retrievedDocs.length > 0 ?
+            simulationResults.retrievedDocs.map(doc =>
+              `<div class="mb-2">
+                <span class="doc-title">${doc.title}</span>
+                <span class="doc-score">Score: ${(doc.score * 100).toFixed(0)}%</span>
+                <p class="doc-content">${doc.content.substring(0,90)}...</p>
+              </div>`
+            ).join("") : (simulationResults.retrievedDocs ? "Żaden dokument nie spełnił progu podobieństwa." : "")
+        },
+        {
+          title: "5. Rozszerzony Prompt",
+          explanation: "Połączenie zapytania i treści odzyskanych dokumentów.",
+          content: simulationResults.augmentedPrompt ? `<pre class="doc-content">${simulationResults.augmentedPrompt}</pre>` : ""
+        },
+        {
+          title: "6. Odpowiedź",
+          explanation: "Ostateczna odpowiedź dla użytkownika.",
+          content: simulationResults.finalAnswer ? `<div class="generated-text">${simulationResults.finalAnswer}</div>` : ""
+        }
+      ];
+      steps.forEach(step => {
+        const stepDiv = document.createElement('div');
+        stepDiv.className = 'simulation-step';
+        const h3 = document.createElement('h3');
+        h3.textContent = step.title;
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'step-content';
+        contentDiv.innerHTML = step.content;
+        const explanationP = document.createElement('p');
+        explanationP.className = 'step-explanation';
+        explanationP.textContent = step.explanation;
+        stepDiv.appendChild(h3);
+        stepDiv.appendChild(contentDiv);
+        stepDiv.appendChild(explanationP);
+        container.appendChild(stepDiv);
+      });
+    }
+    
+    /********** EVENT LISTENERS **********/
+    document.getElementById('add-doc-button').addEventListener('click', addNewDocument);
+    document.getElementById('run-simulation-button').addEventListener('click', runSimulation);
+    document.getElementById('min-score-slider').addEventListener('input', function(e) {
+      minScoreThreshold = parseFloat(e.target.value);
+      document.getElementById('threshold-value').textContent = minScoreThreshold.toFixed(2);
+    });
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      refreshVectorDatabaseView();
+    });
+  </script>
+</body>
+</html>
