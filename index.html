@@ -78,28 +78,8 @@
       margin-bottom: 16px;
     }
 
-    /* API Key */
-    .api-key-bar {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-    .api-key-bar input {
-      flex: 1;
-    }
-    .api-status {
-      font-size: 0.8rem;
-      padding: 4px 12px;
-      border-radius: 20px;
-      white-space: nowrap;
-      font-weight: 500;
-    }
-    .api-status.connected { background: var(--success-light); color: var(--success); }
-    .api-status.disconnected { background: var(--error-light); color: var(--error); }
-    .api-status.simulated { background: #fef3c7; color: #92400e; }
-
     /* Inputs */
-    input[type="text"], input[type="password"], textarea {
+    input[type="text"], textarea {
       width: 100%;
       padding: 10px 14px;
       border: 1px solid var(--border);
@@ -402,7 +382,6 @@
       .container { padding: 24px 16px 60px; }
       header h1 { font-size: 1.5rem; }
       .query-row { flex-direction: column; }
-      .api-key-bar { flex-direction: column; }
       .doc-grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -411,22 +390,8 @@
   <div class="container">
     <header>
       <h1>RAG Simulator</h1>
-      <p>Interaktywny symulator Retrieval-Augmented Generation z opcjonalnym backendem Gemini API.</p>
+      <p>Interaktywny symulator Retrieval-Augmented Generation.</p>
     </header>
-
-    <!-- API Key -->
-    <div class="card">
-      <div class="card-title">Gemini API</div>
-      <div class="api-key-bar">
-        <input type="password" id="api-key" placeholder="Wklej klucz API Gemini (opcjonalnie)">
-        <button class="btn btn-secondary btn-sm" id="toggle-key-btn" onclick="toggleKeyVisibility()">Pokaż</button>
-        <span class="api-status simulated" id="api-status">Tryb symulacji</span>
-      </div>
-      <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:8px;">
-        Bez klucza aplikacja działa w trybie symulacji. Z kluczem — używa prawdziwych embeddingów i generacji Gemini.
-        <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent);">Pobierz klucz</a>
-      </p>
-    </div>
 
     <!-- Add Document -->
     <div class="card">
@@ -457,8 +422,8 @@
       </div>
       <div class="threshold-row">
         <label>Próg podobieństwa</label>
-        <input type="range" id="threshold" min="0" max="1" step="0.05" value="0.15" oninput="document.getElementById('threshold-val').textContent=parseFloat(this.value).toFixed(2)">
-        <span class="threshold-value" id="threshold-val">0.15</span>
+        <input type="range" id="threshold" min="0" max="100" step="5" value="35" oninput="document.getElementById('threshold-val').textContent=this.value+'%'">
+        <span class="threshold-value" id="threshold-val">35%</span>
       </div>
     </div>
 
@@ -490,88 +455,7 @@
     let userDocCounter = 0;
     let isRunning = false;
 
-    /* ============ GEMINI API ============ */
-    const GEMINI_EMBED_MODEL = "gemini-embedding-exp-03-07";
-    const GEMINI_GEN_MODEL = "gemini-2.5-flash";
-    const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
-
-    function getApiKey() {
-      return document.getElementById('api-key').value.trim();
-    }
-
-    function isGeminiMode() {
-      return getApiKey().length > 0;
-    }
-
-    function updateApiStatus() {
-      const el = document.getElementById('api-status');
-      if (isGeminiMode()) {
-        el.textContent = "Gemini aktywne";
-        el.className = "api-status connected";
-      } else {
-        el.textContent = "Tryb symulacji";
-        el.className = "api-status simulated";
-      }
-    }
-
-    document.getElementById('api-key').addEventListener('input', () => {
-      updateApiStatus();
-      // Re-embed all docs when API key changes
-      initEmbeddings();
-    });
-
-    function toggleKeyVisibility() {
-      const input = document.getElementById('api-key');
-      const btn = document.getElementById('toggle-key-btn');
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = 'Ukryj';
-      } else {
-        input.type = 'password';
-        btn.textContent = 'Pokaż';
-      }
-    }
-
-    async function geminiEmbed(texts) {
-      const key = getApiKey();
-      const url = `${GEMINI_BASE}/models/${GEMINI_EMBED_MODEL}:batchEmbedContents?key=${key}`;
-      const requests = texts.map(t => ({
-        model: `models/${GEMINI_EMBED_MODEL}`,
-        content: { parts: [{ text: t }] }
-      }));
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requests })
-      });
-      if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`Embedding API error: ${resp.status} — ${err}`);
-      }
-      const data = await resp.json();
-      return data.embeddings.map(e => e.values);
-    }
-
-    async function geminiGenerate(prompt) {
-      const key = getApiKey();
-      const url = `${GEMINI_BASE}/models/${GEMINI_GEN_MODEL}:generateContent?key=${key}`;
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 512 }
-        })
-      });
-      if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`Generate API error: ${resp.status} — ${err}`);
-      }
-      const data = await resp.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "(brak odpowiedzi)";
-    }
-
-    /* ============ SIMULATED FALLBACKS ============ */
+    /* ============ SIMULATION ============ */
     function seededRandom(seed) {
       let s = seed % 2147483647;
       if (s <= 0) s += 2147483646;
@@ -629,38 +513,13 @@
     }
 
     /* ============ EMBEDDINGS ============ */
-    async function initEmbeddings() {
-      if (isGeminiMode()) {
-        try {
-          const texts = docs.map(d => d.content);
-          const vecs = await geminiEmbed(texts);
-          docs.forEach((d, i) => { embeddings[d.id] = vecs[i]; });
-        } catch (e) {
-          console.error("Embedding error, falling back to simulation:", e);
-          toast("Błąd API — tryb symulacji", true);
-          docs.forEach(d => { embeddings[d.id] = simEmbed(d.content); });
-        }
-      } else {
-        docs.forEach(d => { embeddings[d.id] = simEmbed(d.content); });
-      }
+    function initEmbeddings() {
+      docs.forEach(d => { embeddings[d.id] = simEmbed(d.content); });
       renderDocs();
     }
 
-    async function embedSingle(text) {
-      if (isGeminiMode()) {
-        try {
-          const vecs = await geminiEmbed([text]);
-          return vecs[0];
-        } catch (e) {
-          console.error("Embed error:", e);
-          return simEmbed(text);
-        }
-      }
-      return simEmbed(text);
-    }
-
     /* ============ DOCUMENT MANAGEMENT ============ */
-    async function addNewDocument() {
+    function addNewDocument() {
       const titleEl = document.getElementById('new-doc-title');
       const contentEl = document.getElementById('new-doc-content');
       const content = contentEl.value.trim();
@@ -669,7 +528,7 @@
       const title = titleEl.value.trim() || `Dokument ${userDocCounter}`;
       const newDoc = { id: `user_${userDocCounter}`, title, content, keywords: [] };
       docs.push(newDoc);
-      embeddings[newDoc.id] = await embedSingle(content);
+      embeddings[newDoc.id] = simEmbed(content);
       titleEl.value = "";
       contentEl.value = "";
       renderDocs();
@@ -700,7 +559,7 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span> Przetwarzam...';
 
-      const threshold = parseFloat(document.getElementById('threshold').value);
+      const threshold = parseFloat(document.getElementById('threshold').value) / 100;
       const resultsCard = document.getElementById('results-card');
       resultsCard.style.display = 'block';
       const stepsEl = document.getElementById('steps-container');
@@ -715,26 +574,16 @@
         await sleep(400);
 
         // Step 2: Query embedding
-        const queryVec = await embedSingle(query);
+        const queryVec = simEmbed(query);
         addStep(stepsEl, 2, "Embedding zapytania", `<pre>${formatVec(queryVec)}</pre><p>Wymiary wektora: ${queryVec.length}</p>`, true);
         await sleep(400);
 
         // Step 3: Vector search
-        let results;
-        if (isGeminiMode()) {
-          // Pure cosine similarity with real embeddings
-          results = docs.map(d => ({
-            ...d,
-            score: Math.max(0, cosineSim(queryVec, embeddings[d.id]))
-          }));
-        } else {
-          // Simulated: blend keyword + cosine
-          results = docs.map(d => {
-            const cos = Math.max(0, (cosineSim(queryVec, embeddings[d.id]) + 1) / 2);
-            const kw = simKeywordScore(query, d);
-            return { ...d, score: kw * 0.6 + cos * 0.4 };
-          });
-        }
+        let results = docs.map(d => {
+          const cos = Math.max(0, (cosineSim(queryVec, embeddings[d.id]) + 1) / 2);
+          const kw = simKeywordScore(query, d);
+          return { ...d, score: kw * 0.6 + cos * 0.4 };
+        });
         results.sort((a, b) => b.score - a.score);
 
         const searchHtml = results.slice(0, 5).map(r => {
@@ -771,18 +620,7 @@
         await sleep(400);
 
         // Step 6: Generate answer
-        let answer;
-        if (isGeminiMode() && retrieved.length > 0) {
-          const sysPrompt = `Jesteś pomocnym asystentem. Odpowiadaj po polsku na podstawie podanego kontekstu. Jeśli kontekst nie zawiera odpowiedzi, powiedz o tym.\n\n${augPrompt}`;
-          try {
-            answer = await geminiGenerate(sysPrompt);
-          } catch (e) {
-            console.error("Generate error:", e);
-            answer = simLLM(context, query);
-          }
-        } else {
-          answer = simLLM(context, query);
-        }
+        const answer = simLLM(context, query);
         addStep(stepsEl, 6, "Odpowiedź", `<div class="final-answer">${escHtml(answer)}</div>`, true, true);
 
       } catch (e) {
